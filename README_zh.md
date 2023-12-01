@@ -1,7 +1,7 @@
 # mpv Picture-in-Picture
 实现mpv播放器画中画功能，仅限于Windows平台，因为是基于 [AutoHotkey](https://www.autohotkey.com/) 实现的。
 
-![mpv—pip.gif](https://github.com/verygoodlee/mpv-pip/blob/master/mpv—pip.gif)
+![mpv-pip.gif](https://github.com/verygoodlee/mpv-pip/blob/master/mpv-pip.gif)
 
 ## 安装
 - 需要把`pip-tool.ahk`编译为`pip-tool.exe`，文档：[把脚本转换成 EXE(Ahk2Exe)](https://wyagd001.github.io/v2/docs/Scripts.htm#ahk2exe) ，\

@@ -1,7 +1,7 @@
 # mpv Picture-in-Picture
 mpv lua script implements Picture-in-Picture, only for Windows System because it is implemented based on [AutoHotkey](https://www.autohotkey.com/).
 
-![mpv—pip.gif](https://github.com/verygoodlee/mpv-pip/blob/master/mpv—pip.gif)
+![mpv-pip.gif](https://github.com/verygoodlee/mpv-pip/blob/master/mpv-pip.gif)
 
 ## Install
 - compile `pip-tool.ahk` to `pip-tool.exe`, see: [Convert a Script to an EXE (Ahk2Exe)](https://www.autohotkey.com/docs/v2/Scripts.htm#ahk2exe) ,\
