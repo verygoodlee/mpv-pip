@@ -136,7 +136,7 @@ function on()
     mp.set_property_bool('auto-window-resize', false)
     mp.set_property_bool('keepaspect-window', true)
     mp.set_property_bool('ontop', true)
-    mp.set_property_bool('border', false)    
+    mp.set_property_bool('border', false)
     if not border then
         call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
     else
