@@ -1,5 +1,5 @@
--- mpv Picture-in-Picture script for Windows
--- 
+-- mpv Picture-in-Picture on Windows
+-- https://github.com/verygoodlee/mpv-pip
 
 local options = {
     -- key for PiP on/off
