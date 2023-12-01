@@ -31,6 +31,7 @@ local border = nil
 function call_pip_tool(args)
     table.insert(args, 1, mp.get_property('pid'))
     table.insert(args, 1, 'pip-tool.exe')
+    --mp.msg.info(table.concat(args, ' '))
     mp.command_native({
         name = 'subprocess',
         playback_only = false,
@@ -135,8 +136,16 @@ function on()
     mp.set_property_bool('auto-window-resize', false)
     mp.set_property_bool('keepaspect-window', true)
     mp.set_property_bool('ontop', true)
-    mp.set_property_bool('border', false)
-    call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+    mp.set_property_bool('border', false)    
+    if not border then
+        call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+    else
+        -- mp.set_property_bool('border', false) doesn't make the border disappear immediately
+        -- waiting for border to disappear, resizing window with border will result in incorrect resolution
+        mp.add_timeout(0.05, function()
+            call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+        end)
+    end
     pip_on = true
 end
 
