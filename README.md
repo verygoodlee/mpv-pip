@@ -1,4 +1,11 @@
 # mpv Picture-in-Picture
+
+## Language
+[English](README.md)
+
+[简体中文](README_zh.md)
+
+## About
 mpv lua script implements Picture-in-Picture, only for Windows System because it is implemented based on [AutoHotkey](https://www.autohotkey.com/).
 
 ![mpv-pip.gif](https://github.com/verygoodlee/mpv-pip/blob/master/mpv-pip.gif)

@@ -1,4 +1,11 @@
 # mpv Picture-in-Picture
+
+## 语言
+[English](README.md)
+
+[简体中文](README_zh.md)
+
+## 简介
 实现mpv播放器画中画功能，仅限于Windows平台，因为是基于 [AutoHotkey](https://www.autohotkey.com/) 实现的。
 
 ![mpv-pip.gif](https://github.com/verygoodlee/mpv-pip/blob/master/mpv-pip.gif)
