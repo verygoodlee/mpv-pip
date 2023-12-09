@@ -31,13 +31,19 @@ local border = nil
 function call_pip_tool(args)
     table.insert(args, 1, mp.get_property('pid'))
     table.insert(args, 1, 'pip-tool.exe')
-    --mp.msg.info(table.concat(args, ' '))
+    -- mp.msg.info(table.concat(args, ' '))
     mp.command_native({
         name = 'subprocess',
         playback_only = false,
         capture_stdout = false,
         args = args
     })
+end
+
+function round(num)
+    if num >= 0 then return math.floor(num + 0.5)
+    else return math.ceil(num - 0.5)
+    end
 end
 
 function parse_autofit(atf)
@@ -47,16 +53,16 @@ function parse_autofit(atf)
         w, h = tonumber(w), tonumber(h)
         local w_percent, h_percent = atf:match('^%d+(%%?)x%d+(%%?)$')
         if w_percent ~= nil and w_percent ~= '' then
-            w = math.floor(mp.get_property_number('display-width', 0) * w / 100)
+            w = round(mp.get_property_number('display-width', 0) * w / 100)
         end
         if h_percent ~= nil and h_percent ~= '' then
-            h = math.floor(mp.get_property_number('display-height', 0) * h / 100)
+            h = round(mp.get_property_number('display-height', 0) * h / 100)
         end
     elseif atf:match('^%d+%%?$') then
         w = tonumber(atf:match('^(%d+)%%?$'))
         local w_percent = atf:match('^%d+(%%?)$')
         if w_percent ~= nil and w_percent ~= '' then
-            w = math.floor(mp.get_property_number('display-width', 0) * w / 100)
+            w = round(mp.get_property_number('display-width', 0) * w / 100)
         end
     else
         mp.msg.warn('autofit value is invalid: ' .. atf)
@@ -74,12 +80,12 @@ function size_fit_aspect(w, h, is_larger)
     end
     local aspect = mp.get_property_number('width', 16) / mp.get_property_number('height', 9)
     if aspect > w / h then
-        if is_larger then h = math.floor(w / aspect)
-        else w = math.floor(h * aspect)
+        if is_larger then h = round(w / aspect)
+        else w = round(h * aspect)
         end
     elseif aspect < w / h then
-        if is_larger then w = math.floor(h * aspect)
-        else h = math.floor(w / aspect)
+        if is_larger then w = round(h * aspect)
+        else h = round(w / aspect)
         end
     end
     return w, h
