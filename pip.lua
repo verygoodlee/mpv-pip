@@ -198,6 +198,8 @@ mp.register_event('file-loaded', function()
         mp.msg.warn('window size error')
         return
     end
+    mp.set_property_bool('fs', false)
+    mp.set_property_bool('window-maximized', false)
     call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
 end)
 
