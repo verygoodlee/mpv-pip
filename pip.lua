@@ -6,10 +6,10 @@ local options = {
     key = 'c',
 
     -- initial PiP window size, the meaning is the same as --autofit in mpv.conf
-    -- example 25%x25% 400x400, see https://mpv.io/manual/stable/#options-autofit
+    -- example 25%x25% 400x300, see https://mpv.io/manual/stable/#options-autofit
     autofit = '25%x25%',
     
-    -- PiP window alignment，default right-bottom corner
+    -- PiP window alignment, default right-bottom corner
     -- <left|center|right>
     align_x = 'right',
     -- <top|center|bottom>
