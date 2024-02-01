@@ -79,6 +79,7 @@ function size_fit_aspect(w, h, is_larger)
         end
     end
     local aspect = mp.get_property_number('width', 16) / mp.get_property_number('height', 9)
+    if mp.get_property_number('video-rotate', 0) % 180 == 90 then aspect = 1 / aspect end
     if aspect > w / h then
         if is_larger then h = round(w / aspect)
         else w = round(h * aspect)
@@ -110,6 +111,7 @@ function caculate_normal_window_size()
     end
     
     local w, h = mp.get_property_number('width', 0), mp.get_property_number('height', 0)
+    if mp.get_property_number('video-rotate', 0) % 180 == 90 then w, h = h, w end
     local atf = mp.get_property('autofit')
     if atf ~= nil and atf ~= '' then
         w, h = size_fit_aspect(parse_autofit(atf))
@@ -190,8 +192,7 @@ mp.observe_property('ontop', 'bool', function(name, val)
     mp.set_property_bool('ontop', true)
 end)
 
--- resize pip window after loading file
-mp.register_event('file-loaded', function()
+function resize_pip_window()
     if not pip_on then return end
     local w, h = caculate_pip_window_size()
     if w <= 0 or h <= 0 then
@@ -201,7 +202,12 @@ mp.register_event('file-loaded', function()
     mp.set_property_bool('fs', false)
     mp.set_property_bool('window-maximized', false)
     call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
-end)
+end
+
+mp.observe_property('video-rotate', 'number', resize_pip_window)
+
+-- resize pip window after loading file
+mp.register_event('file-loaded', resize_pip_window)
 
 -- keybinding
 mp.add_key_binding(options.key, 'toggle', toggle)
