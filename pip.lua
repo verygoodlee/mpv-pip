@@ -70,6 +70,11 @@ function parse_autofit(atf)
     return w, h
 end
 
+function is_rotated()
+    return not mp.get_property_bool('idle-active', true) 
+        and mp.get_property_number('video-rotate', 0) % 180 == 90
+end
+
 function size_fit_aspect(w, h, is_larger)
     if w <= 0 then return w, h end
     is_larger = is_larger == nil or is_larger
@@ -79,7 +84,7 @@ function size_fit_aspect(w, h, is_larger)
         end
     end
     local aspect = mp.get_property_number('width', 16) / mp.get_property_number('height', 9)
-    if mp.get_property_number('video-rotate', 0) % 180 == 90 then aspect = 1 / aspect end
+    if is_rotated() then aspect = 1 / aspect end
     if aspect > w / h then
         if is_larger then h = round(w / aspect)
         else w = round(h * aspect)
@@ -111,7 +116,7 @@ function caculate_normal_window_size()
     end
     
     local w, h = mp.get_property_number('width', 0), mp.get_property_number('height', 0)
-    if mp.get_property_number('video-rotate', 0) % 180 == 90 then w, h = h, w end
+    if is_rotated() then w, h = h, w end
     local atf = mp.get_property('autofit')
     if atf ~= nil and atf ~= '' then
         w, h = size_fit_aspect(parse_autofit(atf))
@@ -155,6 +160,7 @@ function on()
         end)
     end
     pip_on = true
+    mp.set_property_bool('user-data/pip/on', true)
 end
 
 -- pip off
@@ -174,6 +180,7 @@ function off()
     mp.set_property_bool('ontop', ontop)
     mp.set_property_bool('border', border)
     pip_on = false
+    mp.set_property_bool('user-data/pip/on', false)
 end
 
 -- pip toggle
@@ -181,16 +188,27 @@ function toggle()
     if pip_on then off() else on() end
 end
 
--- if pip is on, never minimize the window
-mp.observe_property('window-minimized', 'bool', function(name, val) 
-    if not pip_on or not val then return end
-    call_pip_tool({'restore'})
-end)
--- if pip is on, always stay ontop
-mp.observe_property('ontop', 'bool', function(name, val) 
-    if not pip_on or val then return end
-    mp.set_property_bool('ontop', true)
-end)
+local restore_prop_tab = {
+    ['window-minimized'] = false,
+    ['window-maximized'] = false,
+    ['fullscreen'] = false,
+    ['ontop'] = true,
+    ['border'] = false,
+}
+function restore_prop_on_change(name, val)
+    if not pip_on then return end
+    local restore_val = restore_prop_tab[name]
+    if val == restore_val then return end
+    if name == 'window-minimized' then
+        call_pip_tool({'restore'})
+        return
+    end
+    mp.set_property_native(name, restore_val)
+end
+-- if pip is on, never minimized, never maximized, never fullscreen, always stay ontop, alway no border
+for name, _ in pairs(restore_prop_tab) do
+    mp.observe_property(name, 'native', restore_prop_on_change)
+end
 
 function resize_pip_window()
     if not pip_on then return end
@@ -204,8 +222,8 @@ function resize_pip_window()
     call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
 end
 
+-- resize pip window after video rotate
 mp.observe_property('video-rotate', 'number', resize_pip_window)
-
 -- resize pip window after loading file
 mp.register_event('file-loaded', resize_pip_window)
 
