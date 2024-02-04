@@ -10,16 +10,33 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v2
-
-    - name: Compile with Ahk2Exe
+      
+    - name: Create Output Dir
+      shell: cmd
+      run: md x86 x64
+      
+    - name: Compile x86
       uses: CCCC-L/Action-Ahk2Exe@main
       with:
         in: pip-tool.ahk
-        out: pip-tool.exe
+        out: x86/pip-tool.exe
         base: 32
-
-    - name: Upload Artifact
+        
+    - name: Compile x64
+      uses: CCCC-L/Action-Ahk2Exe@main
+      with:
+        in: pip-tool.ahk
+        out: x64/pip-tool.exe
+        base: 64
+        
+    - name: Upload Artifact x86
       uses: actions/upload-artifact@master
       with:
-        name: pip-tool
-        path: pip-tool.exe
+        name: pip-tool_x86
+        path: x86/pip-tool.exe
+        
+    - name: Upload Artifact x64
+      uses: actions/upload-artifact@master
+      with:
+        name: pip-tool_x64
+        path: x64/pip-tool.exe
