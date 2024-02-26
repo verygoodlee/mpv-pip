@@ -60,7 +60,7 @@ function round(num)
 end
 
 function is_rotated()
-    return not mp.get_property_bool('idle-active', true) 
+    return mp.get_property_number('vid')
         and mp.get_property_number('video-rotate', 0) % 180 == 90
 end
 
@@ -200,7 +200,7 @@ for name, reset_val in pairs(pip_on_props) do
     end)
 end
 
--- resize pip window after video rotate and loading file
+-- resize pip window after video rotate and aspect ratio change
 function resize_pip_window()
     if not pip_on then return end
     local w, h = caculate_pip_window_size()
@@ -211,7 +211,9 @@ function resize_pip_window()
     call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
 end
 mp.observe_property('video-rotate', 'number', resize_pip_window)
-mp.register_event('file-loaded', resize_pip_window)
+mp.observe_property('video-params/aspect', 'number', function(_, val)
+    if val then resize_pip_window() end
+end)
 
 -- keybinding
 mp.add_key_binding(options.key, 'toggle', toggle)
