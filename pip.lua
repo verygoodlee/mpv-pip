@@ -96,7 +96,7 @@ function size_fit_aspect(w, h, is_larger)
         else h = 1
         end
     end
-    local aspect = mp.get_property_number('width', 16) / mp.get_property_number('height', 9)
+    local aspect = mp.get_property_number('video-params/aspect', 16 / 9)
     if is_rotated() then aspect = 1 / aspect end
     if aspect > w / h then
         if is_larger then h = round(w / aspect)
@@ -127,8 +127,8 @@ function caculate_normal_window_size()
     if atf_larger ~= nil and atf_larger ~= '' then
         w_max, h_max = size_fit_aspect(parse_autofit(atf_larger))
     end
-    
-    local w, h = mp.get_property_number('width', 0), mp.get_property_number('height', 0)
+    local w, h = mp.get_property_number('video-params/dw', 960),
+                 mp.get_property_number('video-params/dh', 540)
     if is_rotated() then w, h = h, w end
     local atf = mp.get_property('autofit')
     if atf ~= nil and atf ~= '' then
