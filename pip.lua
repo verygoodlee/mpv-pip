@@ -30,14 +30,16 @@ local pip_on_props = {
     ['keepaspect-window'] = true,
     ['ontop'] = true,
     ['border'] = false,
+    ['show-in-taskbar'] = false,
 }
 
 -- original properties before pip is on, pip window back to normal window will restore these properties
 local original_props = {
-   ['auto-window-resize'] = true,
-   ['keepaspect-window'] = true,
-   ['ontop'] = false,
-   ['border'] = true,
+    ['auto-window-resize'] = true,
+    ['keepaspect-window'] = true,
+    ['ontop'] = false,
+    ['border'] = true,
+    ['show-in-taskbar'] = true,
 }
 
 -- call pip-tool.exe
