@@ -22,7 +22,7 @@ mp.options.read_options(options, mp.get_script_name(), function() end)
 local pip_on = false
 
 -- these properties will be set when pip is on
-local pip_on_props = {
+local pip_props = {
     ['fullscreen'] = false,
     ['window-minimized'] = false,
     ['window-maximized'] = false,
@@ -158,14 +158,15 @@ function on()
     for name, _ in pairs(original_props) do
         original_props[name] = mp.get_property_native(name)
     end
-    for name, val in pairs(pip_on_props) do
+    for name, val in pairs(pip_props) do
         mp.set_property_native(name, val)
     end
+    observe_props()
     mp.add_timeout(0.05, function()
         call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+        pip_on = true
+        mp.set_property_bool('user-data/pip/on', true)
     end)
-    pip_on = true
-    mp.set_property_bool('user-data/pip/on', true)
 end
 
 -- pip off
@@ -178,6 +179,7 @@ function off()
     end
     mp.msg.info('Picture-in-Picture: off')
     call_pip_tool({'move', tostring(w), tostring(h), 'center', 'center'})
+    unobserve_props()
     for name, val in pairs(original_props) do
         mp.set_property_native(name, val)
     end
@@ -190,32 +192,40 @@ function toggle()
     if pip_on then off() else on() end
 end
 
--- reset properties on change
-for name, reset_val in pairs(pip_on_props) do
-    mp.observe_property(name, 'native', function (_, val)
-        if not pip_on or val == reset_val then return end
-        if name == 'window-minimized' then
-            call_pip_tool({'restore'})
+function on_prop_change(name, val)
+    if not pip_on then return end
+    -- resize pip window after video rotate and aspect ratio change
+    if name == 'video-rotate' or name == 'video-params/aspect' then
+        if not val then return end
+        local w, h = caculate_pip_window_size()
+        if w <= 0 or h <= 0 then
+            mp.msg.warn('window size error')
             return
         end
-        mp.set_property_native(name, reset_val)
-    end)
-end
-
--- resize pip window after video rotate and aspect ratio change
-function resize_pip_window()
-    if not pip_on then return end
-    local w, h = caculate_pip_window_size()
-    if w <= 0 or h <= 0 then
-        mp.msg.warn('window size error')
+        call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
         return
     end
-    call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+    -- reset props on change
+    if val == pip_props[name] then return end
+    if name == 'window-minimized' then
+        call_pip_tool({'restore'})
+        return
+    end
+    mp.set_property_native(name, pip_props[name])
 end
-mp.observe_property('video-rotate', 'number', resize_pip_window)
-mp.observe_property('video-params/aspect', 'number', function(_, val)
-    if val then resize_pip_window() end
-end)
+
+function observe_props()
+    for name, _ in pairs(pip_props) do
+        mp.observe_property(name, 'native', on_prop_change)
+    end
+    mp.observe_property('video-rotate', 'native', on_prop_change)
+    mp.observe_property('video-params/aspect', 'native', on_prop_change)
+end
+
+function unobserve_props()
+    mp.unobserve_property(on_prop_change)
+end
+
 
 -- keybinding
 mp.add_key_binding(options.key, 'toggle', toggle)
