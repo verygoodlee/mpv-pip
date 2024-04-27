@@ -30,7 +30,9 @@ local pip_props = {
     ['keepaspect-window'] = true,
     ['ontop'] = true,
     ['border'] = false,
-    ['show-in-taskbar'] = false,
+-- toggle show-in-taskbar causes the mpv window to disappear for a very short time
+-- https://github.com/mpv-player/mpv/issues/13928#issuecomment-2080382056
+--    ['show-in-taskbar'] = false,
 }
 
 -- original properties before pip is on, pip window back to normal window will restore these properties
@@ -39,7 +41,7 @@ local original_props = {
     ['keepaspect-window'] = true,
     ['ontop'] = false,
     ['border'] = true,
-    ['show-in-taskbar'] = true,
+--    ['show-in-taskbar'] = true,
 }
 
 -- call pip-tool.exe
