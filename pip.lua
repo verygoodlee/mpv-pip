@@ -1,6 +1,9 @@
 -- mpv Picture-in-Picture on Windows
 -- https://github.com/verygoodlee/mpv-pip
 
+local ffi_ok, ffi = pcall(require, 'ffi')
+if not ffi_ok then return end -- mpv builds without luajit
+
 local options = {
     -- key for PiP on/off
     key = 'c',
@@ -16,8 +19,105 @@ local options = {
     align_y = 'bottom',
 }
 
-mp.options = require 'mp.options'
-mp.options.read_options(options, mp.get_script_name(), function() end)
+require('mp.options').read_options(options, mp.get_script_name(), function() end)
+
+ffi.cdef[[
+    typedef void*           HWND;
+    typedef int             BOOL;
+    typedef unsigned int    DWORD;
+    typedef unsigned int    LPDWORD[1];
+    typedef int             LPARAM;
+    typedef long            LONG;
+    typedef unsigned int    UINT;
+    typedef void*           PVOID;
+    typedef BOOL            (*WNDENUMPROC)(HWND, LPARAM);
+    typedef struct tagRECT {
+        LONG left;
+        LONG top;
+        LONG right;
+        LONG bottom;                       
+    }                       RECT;
+
+    HWND    GetForegroundWindow();
+    BOOL    EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
+    DWORD   GetWindowThreadProcessId(HWND hwnd, LPDWORD lpdwProcessId);
+    BOOL    SystemParametersInfoA(UINT uiAction, UINT uiParam, PVOID pvParam, UINT fWinIni);
+    BOOL    ShowWindow(HWND hwnd, int nCmdShow);
+    BOOL    MoveWindow(HWND hwnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
+]]
+
+local user32 = ffi.load('user32')
+
+local mpv_pid = require('mp.utils').getpid()
+local mpv_hwnd = nil
+local work_area = {
+    ['left']   = 0,
+    ['top']    = 0,
+    ['right']  = mp.get_property_number('display-width', 0),
+    ['bottom'] = mp.get_property_number('display-height', 0),
+}
+
+
+function init()
+    if mpv_hwnd then return true end
+    local foreground_hwnd = user32.GetForegroundWindow()
+    if is_mpv_window(foreground_hwnd) then
+        mpv_hwnd = foreground_hwnd
+    else
+        user32.EnumWindows(function(each_hwnd, _)
+            if is_mpv_window(each_hwnd) then
+                mpv_hwnd = each_hwnd
+                return false
+            end
+            return true
+        end, 0)
+    end
+    local rect = ffi.new("RECT[1]")
+    if user32.SystemParametersInfoA(0x0030, 0, rect, 0) ~= 0 then
+        work_area.left   = rect[0].left
+        work_area.top    = rect[0].top
+        work_area.right  = rect[0].right
+        work_area.bottom = rect[0].bottom
+    end
+    if not mpv_hwnd then mp.msg.warn('init failed') end
+    return mpv_hwnd ~= nil
+end
+
+function is_mpv_window(hwnd)
+    if not hwnd then return false end
+    local lpdwProcessId = ffi.new('LPDWORD')
+    user32.GetWindowThreadProcessId(hwnd, lpdwProcessId)
+    return lpdwProcessId[0] == mpv_pid
+end
+
+function move_window(w, h, align_x, align_y)
+    if not init() then return false end
+    if w <= 0 or h <= 0 then
+        mp.msg.warn('window size error')
+        return false
+    end
+    local x, y
+    if align_x == 'left' then
+        x = work_area.left
+    elseif align_x == 'right' then
+        x = work_area.right - w
+    else
+        x = (work_area.left+work_area.right)/2 - w/2
+    end
+    if align_y == 'top' then 
+        y = work_area.top
+    elseif align_y == 'bottom' then
+        y = work_area.bottom - h
+    else 
+        y = (work_area.top+work_area.bottom)/2 - h/2
+    end
+    return user32.MoveWindow(mpv_hwnd, x, y, w, h, 0) ~= 0
+end
+
+function restore_window()
+    if not init() then return end
+    return user32.ShowWindow(mpv_hwnd, 9)
+end
 
 local pip_on = false
 
@@ -44,19 +144,6 @@ local original_props = {
 --    ['show-in-taskbar'] = true,
 }
 
--- call pip-tool.exe
-function call_pip_tool(args)
-    table.insert(args, 1, mp.get_property('pid'))
-    table.insert(args, 1, 'pip-tool.exe')
-    -- mp.msg.info(table.concat(args, ' '))
-    mp.command_native({
-        name = 'subprocess',
-        playback_only = false,
-        capture_stdout = false,
-        args = args
-    })
-end
-
 function round(num)
     if num >= 0 then return math.floor(num + 0.5)
     else return math.ceil(num - 0.5)
@@ -75,16 +162,16 @@ function parse_autofit(atf)
         w, h = tonumber(w), tonumber(h)
         local w_percent, h_percent = atf:match('^%d+(%%?)x%d+(%%?)$')
         if w_percent ~= nil and w_percent ~= '' then
-            w = round(mp.get_property_number('display-width', 0) * w / 100)
+            w = round((work_area.right - work_area.left) * w / 100)
         end
         if h_percent ~= nil and h_percent ~= '' then
-            h = round(mp.get_property_number('display-height', 0) * h / 100)
+            h = round((work_area.bottom - work_area.top) * h / 100)
         end
     elseif atf:match('^%d+%%?$') then
         w = tonumber(atf:match('^(%d+)%%?$'))
         local w_percent = atf:match('^%d+(%%?)$')
         if w_percent ~= nil and w_percent ~= '' then
-            w = round(mp.get_property_number('display-width', 0) * w / 100)
+            w = round((work_area.right - work_area.left) * w / 100)
         end
     else
         mp.msg.warn('autofit value is invalid: ' .. atf)
@@ -151,12 +238,8 @@ end
 -- pip on
 function on()
     if pip_on then return end
+    if not init() then return end
     local w, h = caculate_pip_window_size()
-    if w <= 0 or h <= 0 then
-        mp.msg.warn('window size error')
-        return
-    end
-    mp.msg.info('Picture-in-Picture: on')
     for name, _ in pairs(original_props) do
         original_props[name] = mp.get_property_native(name)
     end
@@ -164,8 +247,16 @@ function on()
         mp.set_property_native(name, val)
     end
     observe_props()
-    mp.add_timeout(0.05, function()
-        call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+    mp.add_timeout(0.025, function()
+        local success = move_window(w, h, options.align_x, options.align_y)
+        if not success then
+            unobserve_props()
+            for name, val in pairs(original_props) do
+                mp.set_property_native(name, val)
+            end
+            return
+        end
+        mp.msg.info('Picture-in-Picture: on')
         pip_on = true
         mp.set_property_bool('user-data/pip/on', true)
     end)
@@ -175,12 +266,9 @@ end
 function off()
     if not pip_on then return end
     local w, h = caculate_normal_window_size()
-    if w <= 0 or h <= 0 then
-        mp.msg.warn('window size error')
-        return
-    end
+    local success = move_window(w, h, 'center', 'center')
+    if not success then return end
     mp.msg.info('Picture-in-Picture: off')
-    call_pip_tool({'move', tostring(w), tostring(h), 'center', 'center'})
     unobserve_props()
     for name, val in pairs(original_props) do
         mp.set_property_native(name, val)
@@ -200,17 +288,13 @@ function on_prop_change(name, val)
     if name == 'video-rotate' or name == 'video-params/aspect' then
         if not val then return end
         local w, h = caculate_pip_window_size()
-        if w <= 0 or h <= 0 then
-            mp.msg.warn('window size error')
-            return
-        end
-        call_pip_tool({'move', tostring(w), tostring(h), options.align_x, options.align_y})
+        move_window(w, h, options.align_x, options.align_y)
         return
     end
     -- reset props on change
     if val == pip_props[name] then return end
     if name == 'window-minimized' then
-        call_pip_tool({'restore'})
+        restore_window()
         return
     end
     mp.set_property_native(name, pip_props[name])
