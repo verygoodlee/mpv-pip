@@ -21,8 +21,26 @@ local user_opts = {
     align_x = 'right',
     -- <top|center|bottom>
     align_y = 'bottom',
+
+    thin_border = true,
 }
-options.read_options(user_opts, _, function() end)
+function validate_user_opts()
+    if not (user_opts.autofit:match('^%d+%%?x%d+%%?$') or user_opts.autofit:match('^%d+%%?$')) then
+        msg.warn('autofit option is invalid, restore to the default value')
+        user_opts.autofit = '25%x25%'
+    end
+    if not (user_opts.align_x == 'left' or user_opts.align_x == 'center' or user_opts.align_x == 'right') then
+        msg.warn('align_x option is invalid, restore to the default value')
+        user_opts.align_x = 'right'
+    end
+    if not (user_opts.align_y == 'top' or user_opts.align_y == 'center' or user_opts.align_y == 'bottom') then
+        msg.warn('align_y option is invalid, restore to the default value')
+        user_opts.align_y = 'bottom'
+    end
+    thin_border = thin_border and mp.get_property_native('title-bar') ~= nil
+end
+options.read_options(user_opts, _, validate_user_opts)
+validate_user_opts()
 
 ---------- win32api start ----------
 ffi.cdef[[
@@ -41,7 +59,7 @@ ffi.cdef[[
         LONG top;
         LONG right;
         LONG bottom;                       
-    }                       RECT;
+    }                       RECT, *PRECT, *NPRECT, *LPRECT;
 
     HWND    GetForegroundWindow();
     BOOL    EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
@@ -51,6 +69,7 @@ ffi.cdef[[
     BOOL    MoveWindow(HWND hwnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
     LONG_PTR GetWindowLongPtrW(HWND hwnd, int nIndex);
     LONG_PTR SetWindowLongPtrW(HWND hwnd, int nIndex, LONG_PTR dwNewLong);
+    BOOL    AdjustWindowRect(LPRECT lpRect, DWORD dwStyle, BOOL bMenu);
 ]]
 
 local user32 = ffi.load('user32')
@@ -104,20 +123,41 @@ function move_window(w, h, align_x, align_y, taskbar)
         msg.warn('window size error')
         return false
     end
+    
+    local invisible_borders_size = {
+        ['left'] = 0,
+        ['right'] = 0,
+        ['top'] = 0,
+        ['bottom'] = 0,
+    }
+    if user_opts.thin_border then
+        local thin_border_size = 1
+        local rect = ffi.new('RECT[1]')
+        rect[0].left, rect[0].top, rect[0].right, rect[0].bottom = 0, 0, w, h
+        local GWL_STYLE = -16
+        user32.AdjustWindowRect(rect, user32.GetWindowLongPtrW(mpv_hwnd, GWL_STYLE), 0)
+        local invisible_title_height = -rect[0].top - thin_border_size
+        w2, h2 = rect[0].right - rect[0].left, rect[0].bottom - rect[0].top - invisible_title_height
+        invisible_borders_size.left = -rect[0].left - thin_border_size
+        invisible_borders_size.right = w2 - w - invisible_borders_size.left - 2 * thin_border_size
+        invisible_borders_size.bottom = h2 - h - 2 * thin_border_size
+        w, h = w2, h2
+    end
+
     local x, y
     if align_x == 'left' then
-        x = work_area.left
+        x = work_area.left - invisible_borders_size.left
     elseif align_x == 'right' then
-        x = work_area.right - w
+        x = work_area.right - w + invisible_borders_size.right
     else
-        x = (work_area.left+work_area.right)/2 - w/2
+        x = (work_area.left+work_area.right)/2 - (w+invisible_borders_size.left-invisible_borders_size.right)/2
     end
     if align_y == 'top' then 
-        y = work_area.top
+        y = work_area.top - invisible_borders_size.top
     elseif align_y == 'bottom' then
-        y = work_area.bottom - h
-    else 
-        y = (work_area.top+work_area.bottom)/2 - h/2
+        y = work_area.bottom - h + invisible_borders_size.bottom
+    else
+        y = (work_area.top+work_area.bottom)/2 - (h+invisible_borders_size.top-invisible_borders_size.bottom)/2
     end
     show_window(false)
     local success = user32.MoveWindow(mpv_hwnd, x, y, w, h, 0) ~= 0
@@ -242,13 +282,15 @@ local pip_props = {
     ['auto-window-resize'] = false,
     ['keepaspect-window'] = true,
     ['ontop'] = true,
-    ['border'] = false,
+    [user_opts.thin_border and 'title-bar' or 'border'] = false,
+    ['border'] = user_opts.thin_border,
 }
 -- original properties before pip is on, pip window back to normal window will restore these properties
 local original_props = {
     ['auto-window-resize'] = true,
     ['keepaspect-window'] = true,
     ['ontop'] = false,
+    [user_opts.thin_border and 'title-bar' or 'border'] = true,
     ['border'] = true,
 }
 
@@ -274,15 +316,17 @@ function on()
     pip_w, pip_h = get_pip_window_size()
     set_pip_props()
     observe_props()
-    local success = move_window(pip_w, pip_h, user_opts.align_x, user_opts.align_y, false)
-    if not success then
-        unobserve_props()
-        set_original_props()
-        return
-    end
-    msg.info(string.format('Picture-in-Picture: on, Size: %dx%d', pip_w, pip_h))
-    pip_on = true
-    mp.set_property_bool('user-data/pip/on', true)
+    mp.add_timeout(0.05, function()
+        local success = move_window(pip_w, pip_h, user_opts.align_x, user_opts.align_y, false)
+        if not success then
+            unobserve_props()
+            set_original_props()
+            return
+        end
+        msg.info(string.format('Picture-in-Picture: on, Size: %dx%d', pip_w, pip_h))
+        pip_on = true
+        mp.set_property_bool('user-data/pip/on', true)
+    end)
 end
 
 -- pip off
@@ -330,6 +374,9 @@ function reset_pip_prop_on_change(name, val)
     if not pip_on then return end
     if val == pip_props[name] then return end
     mp.set_property_native(name, pip_props[name])
+    if name == 'fullscreen' or name == 'window-minimized' or name == 'window-maximized' then
+        mp.add_timeout(0.1, function() show_in_taskbar(false)  end)
+    end
 end
 
 -- keybinding
