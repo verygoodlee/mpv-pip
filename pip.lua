@@ -22,7 +22,8 @@ local user_opts = {
     -- <top|center|bottom>
     align_y = 'bottom',
 
-    thin_border = true,
+    -- add thin-line border to PiP window, works only on Windows11
+    thin_border = false,
 }
 function validate_user_opts()
     if not (user_opts.autofit:match('^%d+%%?x%d+%%?$') or user_opts.autofit:match('^%d+%%?$')) then
@@ -137,7 +138,7 @@ function move_window(w, h, align_x, align_y, taskbar)
         local GWL_STYLE = -16
         user32.AdjustWindowRect(rect, user32.GetWindowLongPtrW(mpv_hwnd, GWL_STYLE), 0)
         local invisible_title_height = -rect[0].top - thin_border_size
-        w2, h2 = rect[0].right - rect[0].left, rect[0].bottom - rect[0].top - invisible_title_height
+        local w2, h2 = rect[0].right - rect[0].left, rect[0].bottom - rect[0].top - invisible_title_height
         invisible_borders_size.left = -rect[0].left - thin_border_size
         invisible_borders_size.right = w2 - w - invisible_borders_size.left - 2 * thin_border_size
         invisible_borders_size.bottom = h2 - h - 2 * thin_border_size
