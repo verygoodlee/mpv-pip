@@ -27,21 +27,21 @@ local user_opts = {
 }
 function validate_user_opts()
     if not (user_opts.autofit:match('^%d+%%?x%d+%%?$') or user_opts.autofit:match('^%d+%%?$')) then
-        msg.warn('autofit option is invalid, restore to the default value')
+        msg.warn('autofit option is invalid')
         user_opts.autofit = '25%x25%'
     end
     if not (user_opts.align_x == 'left' or user_opts.align_x == 'center' or user_opts.align_x == 'right') then
-        msg.warn('align_x option is invalid, restore to the default value')
+        msg.warn('align_x option is invalid')
         user_opts.align_x = 'right'
     end
     if not (user_opts.align_y == 'top' or user_opts.align_y == 'center' or user_opts.align_y == 'bottom') then
-        msg.warn('align_y option is invalid, restore to the default value')
+        msg.warn('align_y option is invalid')
         user_opts.align_y = 'bottom'
     end
     thin_border = thin_border and mp.get_property_native('title-bar') ~= nil
+    resize_pip_window()
 end
 options.read_options(user_opts, _, validate_user_opts)
-validate_user_opts()
 
 ---------- win32api start ----------
 ffi.cdef[[
@@ -199,11 +199,12 @@ function is_empty(o)
     return false
 end
 
+local video_out_params = mp.get_property_native('video-out-params', {})
 function get_video_out_size()
-    local o = mp.get_property_native('video-out-params')
-    if is_empty(o) then return 960, 540, 960/540 end
-    local w, h = o['dw'], o['dh']
-    if o['rotate'] % 180 == 90 then return h, w, h/w end
+    local w = video_out_params and video_out_params['dw'] or 960
+    local h = video_out_params and video_out_params['dh'] or 540
+    local rotate = video_out_params and video_out_params['rotate']  or 0
+    if rotate % 180 == 90 then return h, w, h/w end
     return w, h, w/h
 end
 
@@ -273,7 +274,6 @@ end
 ---------- helper functions end ----------
 
 local pip_on = false
-local pip_w, pip_h
 
 -- these properties will be set when pip is on
 local pip_props = {
@@ -314,17 +314,18 @@ end
 -- pip on
 function on()
     if pip_on or not init() then return end
-    pip_w, pip_h = get_pip_window_size()
+    video_out_params = mp.get_property_native('video-out-params', {})
     set_pip_props()
     observe_props()
     mp.add_timeout(0.05, function()
-        local success = move_window(pip_w, pip_h, user_opts.align_x, user_opts.align_y, false)
+        local w, h = get_pip_window_size()
+        local success = move_window(w, h, user_opts.align_x, user_opts.align_y, false)
         if not success then
             unobserve_props()
             set_original_props()
             return
         end
-        msg.info(string.format('Picture-in-Picture: on, Size: %dx%d', pip_w, pip_h))
+        msg.info(string.format('Picture-in-Picture: on, Size: %dx%d', w, h))
         pip_on = true
         mp.set_property_bool('user-data/pip/on', true)
     end)
@@ -349,36 +350,51 @@ function toggle()
 end
 
 function observe_props()
-    mp.observe_property('video-out-params', 'native', resize_pip_window_on_change)
+    mp.observe_property('video-out-params', 'native', on_video_out_params_change)
     for name, _ in pairs(pip_props) do
-        mp.observe_property(name, 'native', reset_pip_prop_on_change)
+        mp.observe_property(name, 'native', on_pip_prop_change)
     end
 end
 
 function unobserve_props()
-    mp.unobserve_property(resize_pip_window_on_change)
-    mp.unobserve_property(reset_pip_prop_on_change)
+    mp.unobserve_property(on_video_out_params_change)
+    mp.unobserve_property(on_pip_prop_change)
 end
 
-function resize_pip_window_on_change()
+function on_video_out_params_change(_, val)
     if not pip_on then return end
-    local w, h = get_pip_window_size()
-    if w == pip_w and h == pip_h then return end
-    local success = move_window(w, h, user_opts.align_x, user_opts.align_y, false)
-    if success then
-        pip_w, pip_h = w, h
-        msg.info(string.format('Resize: %dx%d', pip_w, pip_h))
+    local w0, h0 = get_pip_window_size()
+    local pixelformat0 = video_out_params and video_out_params['pixelformat'] or ''
+    video_out_params = val
+    local w1, h1 = get_pip_window_size()
+    local pixelformat1 = video_out_params and video_out_params['pixelformat'] or ''
+    local resized = false
+    if not (w0 == w1 and h0 == h1) then
+        resized = resize_pip_window(w1, h1)
+    end
+    if not resized and not (pixelformat0 == pixelformat1) then
+        mp.add_timeout(0.1, function() show_in_taskbar(false) end)
     end
 end
 
-function reset_pip_prop_on_change(name, val)
+function on_pip_prop_change(name, val)
     if not pip_on then return end
     if val == pip_props[name] then return end
     mp.set_property_native(name, pip_props[name])
     if name == 'fullscreen' or name == 'window-minimized' or name == 'window-maximized' then
-        mp.add_timeout(0.1, function() show_in_taskbar(false)  end)
+        mp.add_timeout(0.1, function() show_in_taskbar(false) end)
     end
 end
+
+function resize_pip_window(w, h)
+    if not pip_on then return false end
+    if not w or not h then w, h = get_pip_window_size() end
+    local resized = move_window(w, h, user_opts.align_x, user_opts.align_y, false)
+    if resized then msg.info(string.format('Resize: %dx%d', w, h)) end
+    return resized
+end
+
+validate_user_opts()
 
 -- keybinding
 mp.add_key_binding(user_opts.key, 'toggle', toggle)
