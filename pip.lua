@@ -76,12 +76,7 @@ ffi.cdef[[
 local user32 = ffi.load('user32')
 
 local mpv_hwnd = nil
-local work_area = {
-    ['left']   = 0,
-    ['top']    = 0,
-    ['right']  = mp.get_property_number('display-width', 0),
-    ['bottom'] = mp.get_property_number('display-height', 0),
-}
+local work_area = {['left'] = 0, ['top'] = 0, ['right'] = 0, ['bottom'] = 0}
 
 function init()
     if mpv_hwnd then return true end
@@ -99,6 +94,8 @@ function init()
         end, 0)
     end
     -- get work area of screen, is the portion not obscured by the system taskbar
+    work_area.right = mp.get_property_number('display-width', 0)
+    work_area.bottom = mp.get_property_number('display-height', 0)
     local rect = ffi.new("RECT[1]")
     local SPI_GETWORKAREA = 0x0030
     if user32.SystemParametersInfoA(SPI_GETWORKAREA, 0, rect, 0) ~= 0 then
@@ -107,7 +104,7 @@ function init()
         work_area.right  = rect[0].right
         work_area.bottom = rect[0].bottom
     end
-    if not mpv_hwnd then msg.warn('init failed') end
+    if not mpv_hwnd then msg.warn('init failed, mpv window not found') end
     return mpv_hwnd ~= nil
 end
 
@@ -124,13 +121,7 @@ function move_window(w, h, align_x, align_y, taskbar)
         msg.warn('window size error')
         return false
     end
-    
-    local invisible_borders_size = {
-        ['left'] = 0,
-        ['right'] = 0,
-        ['top'] = 0,
-        ['bottom'] = 0,
-    }
+    local invisible_borders_size = {['left'] = 0, ['right'] = 0, ['top'] = 0, ['bottom'] = 0}
     if user_opts.thin_border then
         local thin_border_size = 1
         local rect = ffi.new('RECT[1]')
@@ -144,7 +135,6 @@ function move_window(w, h, align_x, align_y, taskbar)
         invisible_borders_size.bottom = h2 - h - 2 * thin_border_size
         w, h = w2, h2
     end
-
     local x, y
     if align_x == 'left' then
         x = work_area.left - invisible_borders_size.left
@@ -199,7 +189,7 @@ function is_empty(o)
     return false
 end
 
-local video_out_params = mp.get_property_native('video-out-params', {})
+local video_out_params = nil
 function get_video_out_size()
     local w = video_out_params and video_out_params['dw'] or 960
     local h = video_out_params and video_out_params['dh'] or 540
@@ -314,10 +304,10 @@ end
 -- pip on
 function on()
     if pip_on or not init() then return end
-    video_out_params = mp.get_property_native('video-out-params', {})
     set_pip_props()
     observe_props()
     mp.add_timeout(0.05, function()
+        video_out_params = mp.get_property_native('video-out-params')
         local w, h = get_pip_window_size()
         local success = move_window(w, h, user_opts.align_x, user_opts.align_y, false)
         if not success then
