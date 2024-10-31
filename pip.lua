@@ -38,7 +38,7 @@ function validate_user_opts()
         msg.warn('align_y option is invalid')
         user_opts.align_y = 'bottom'
     end
-    thin_border = thin_border and mp.get_property_native('title-bar') ~= nil
+    user_opts.thin_border = user_opts.thin_border and mp.get_property_native('title-bar') ~= nil
     resize_pip_window()
 end
 options.read_options(user_opts, _, validate_user_opts)
