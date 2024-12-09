@@ -12,8 +12,8 @@ local user_opts = {
     -- key for PiP on/off
     key = 'c',
 
-    -- PiP window size, the meaning is the same as --autofit in mpv.conf
-    -- example 25%x25% 400x300, see https://mpv.io/manual/stable/#options-autofit
+    -- PiP window size, the syntax is the same as https://mpv.io/manual/stable/#options-autofit
+    -- e.g. 25%x25% 400x300
     autofit = '25%x25%',
     
     -- PiP window alignment, default right-bottom corner
@@ -46,6 +46,7 @@ options.read_options(user_opts, _, validate_user_opts)
 ---------- win32api start ----------
 ffi.cdef[[
     typedef void*           HWND;
+    typedef void*           HMONITOR;
     typedef int             BOOL;
     typedef unsigned int    DWORD;
     typedef unsigned int    LPDWORD[1];
@@ -61,10 +62,18 @@ ffi.cdef[[
         LONG right;
         LONG bottom;                       
     }                       RECT, *PRECT, *NPRECT, *LPRECT;
+    typedef struct tagMONITORINFO {
+        DWORD cbSize;
+        RECT  rcMonitor;
+        RECT  rcWork;
+        DWORD dwFlags;
+    }                       MONITORINFO, *LPMONITORINFO;
 
     HWND    GetForegroundWindow();
     BOOL    EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
     DWORD   GetWindowThreadProcessId(HWND hwnd, LPDWORD lpdwProcessId);
+    HMONITOR MonitorFromWindow(HWND hwnd, DWORD dwFlags);
+    BOOL    GetMonitorInfoA(HMONITOR hMonitor, LPMONITORINFO lpmi);
     BOOL    SystemParametersInfoA(UINT uiAction, UINT uiParam, PVOID pvParam, UINT fWinIni);
     BOOL    ShowWindow(HWND hwnd, int nCmdShow);
     BOOL    MoveWindow(HWND hwnd, int X, int Y, int nWidth, int nHeight, BOOL bRepaint);
@@ -76,7 +85,6 @@ ffi.cdef[[
 local user32 = ffi.load('user32')
 
 local mpv_hwnd = nil
-local work_area = {['left'] = 0, ['top'] = 0, ['right'] = 0, ['bottom'] = 0}
 
 function init()
     if mpv_hwnd then return true end
@@ -93,18 +101,7 @@ function init()
             return true
         end, 0)
     end
-    -- get work area of screen, is the portion not obscured by the system taskbar
-    work_area.right = mp.get_property_number('display-width', 0)
-    work_area.bottom = mp.get_property_number('display-height', 0)
-    local rect = ffi.new("RECT[1]")
-    local SPI_GETWORKAREA = 0x0030
-    if user32.SystemParametersInfoA(SPI_GETWORKAREA, 0, rect, 0) ~= 0 then
-        work_area.left   = rect[0].left
-        work_area.top    = rect[0].top
-        work_area.right  = rect[0].right
-        work_area.bottom = rect[0].bottom
-    end
-    if not mpv_hwnd then msg.warn('init failed, mpv window not found') end
+    if not mpv_hwnd then msg.warn('mpv window not found') end
     return mpv_hwnd ~= nil
 end
 
@@ -115,27 +112,59 @@ function is_mpv_window(hwnd)
     return lpdwProcessId[0] == utils.getpid()
 end
 
+-- get work area of display monitor, is the portion not obscured by the system taskbar
+function get_work_area()
+    local work_area = {left = 0, top = 0, right = 0, bottom = 0}
+    if not init() then return work_area end
+    -- get display monitor that has the largest area of intersection with mpv window
+    local MONITOR_DEFAULTTONEAREST = 0x00000002
+    local hmonitor = user32.MonitorFromWindow(mpv_hwnd, MONITOR_DEFAULTTONEAREST)
+    if hmonitor ~= nil then
+        local monitor_info = ffi.new('MONITORINFO', {cbSize = ffi.sizeof('MONITORINFO')})
+        if user32.GetMonitorInfoA(hmonitor, monitor_info) ~= 0 then
+            work_area.left   = monitor_info.rcWork.left
+            work_area.top    = monitor_info.rcWork.top
+            work_area.right  = monitor_info.rcWork.right
+            work_area.bottom = monitor_info.rcWork.bottom
+            return work_area
+        end
+    end
+    -- fallback: primary display monitor
+    local rect = ffi.new('RECT')
+    local SPI_GETWORKAREA = 0x0030
+    if user32.SystemParametersInfoA(SPI_GETWORKAREA, 0, rect, 0) ~= 0 then
+        work_area.left   = rect.left
+        work_area.top    = rect.top
+        work_area.right  = rect.right
+        work_area.bottom = rect.bottom
+        return work_area
+    end
+    msg.warn('failed to get work area of display monitor')
+    return work_area
+end
+
 function move_window(w, h, align_x, align_y, taskbar)
     if not init() then return false end
     if w <= 0 or h <= 0 then
         msg.warn('window size error')
         return false
     end
-    local invisible_borders_size = {['left'] = 0, ['right'] = 0, ['top'] = 0, ['bottom'] = 0}
+    local invisible_borders_size = {left = 0, right = 0, top = 0, bottom = 0}
     if user_opts.thin_border then
         local thin_border_size = 1
-        local rect = ffi.new('RECT[1]')
-        rect[0].left, rect[0].top, rect[0].right, rect[0].bottom = 0, 0, w, h
+        local rect = ffi.new('RECT')
+        rect.left, rect.top, rect.right, rect.bottom = 0, 0, w, h
         local GWL_STYLE = -16
         user32.AdjustWindowRect(rect, user32.GetWindowLongPtrW(mpv_hwnd, GWL_STYLE), 0)
-        local invisible_title_height = -rect[0].top - thin_border_size
-        local w2, h2 = rect[0].right - rect[0].left, rect[0].bottom - rect[0].top - invisible_title_height
-        invisible_borders_size.left = -rect[0].left - thin_border_size
+        local invisible_title_height = -rect.top - thin_border_size
+        local w2, h2 = rect.right - rect.left, rect.bottom - rect.top - invisible_title_height
+        invisible_borders_size.left = -rect.left - thin_border_size
         invisible_borders_size.right = w2 - w - invisible_borders_size.left - 2 * thin_border_size
         invisible_borders_size.bottom = h2 - h - 2 * thin_border_size
         w, h = w2, h2
     end
     local x, y
+    local work_area = get_work_area()
     if align_x == 'left' then
         x = work_area.left - invisible_borders_size.left
     elseif align_x == 'right' then
@@ -181,11 +210,7 @@ end
 
 function is_empty(o)
     if o == nil or o == '' then return true end
-    if type(o) == 'table' then
-        local size = 0
-        for _, _ in pairs(o) do size = size + 1 end
-        return size == 0
-    end
+    if type(o) == 'table' then return next(o) == nil end
     return false
 end
 
@@ -200,6 +225,7 @@ end
 
 function parse_autofit(atf, larger)
     local w, h = 0, 0
+    local work_area = get_work_area()
     if atf:match('^%d+%%?x%d+%%?$') then -- WxH
         w, h = atf:match('^(%d+)%%?x(%d+)%%?$')
         w, h = tonumber(w), tonumber(h)
@@ -301,29 +327,31 @@ function set_original_props()
     end
 end
 
+local turn_on_timer = mp.add_timeout(0.05, function()
+    video_out_params = mp.get_property_native('video-out-params')
+    local w, h = get_pip_window_size()
+    local success = move_window(w, h, user_opts.align_x, user_opts.align_y, false)
+    if not success then
+        unobserve_props()
+        set_original_props()
+        return
+    end
+    msg.info(string.format('Picture-in-Picture: on, Size: %dx%d', w, h))
+    pip_on = true
+    mp.set_property_bool('user-data/pip/on', true)
+end, true)
+
 -- pip on
 function on()
-    if pip_on or not init() then return end
+    if pip_on or not init() or turn_on_timer:is_enabled() then return end
     set_pip_props()
     observe_props()
-    mp.add_timeout(0.05, function()
-        video_out_params = mp.get_property_native('video-out-params')
-        local w, h = get_pip_window_size()
-        local success = move_window(w, h, user_opts.align_x, user_opts.align_y, false)
-        if not success then
-            unobserve_props()
-            set_original_props()
-            return
-        end
-        msg.info(string.format('Picture-in-Picture: on, Size: %dx%d', w, h))
-        pip_on = true
-        mp.set_property_bool('user-data/pip/on', true)
-    end)
+    turn_on_timer:resume()
 end
 
 -- pip off
 function off()
-    if not pip_on then return end
+    if not pip_on or not init() then return end
     local w, h = get_normal_window_size()
     local success = move_window(w, h, 'center', 'center', true)
     if not success then return end
@@ -340,38 +368,33 @@ function toggle()
 end
 
 function observe_props()
-    mp.observe_property('video-out-params', 'native', on_video_out_params_change)
     for name, _ in pairs(pip_props) do
         mp.observe_property(name, 'native', on_pip_prop_change)
     end
+    mp.register_event('video-reconfig', on_video_reconfig)
 end
 
 function unobserve_props()
-    mp.unobserve_property(on_video_out_params_change)
     mp.unobserve_property(on_pip_prop_change)
+    mp.unregister_event(on_video_reconfig)
 end
 
-function on_video_out_params_change(_, val)
+function on_video_reconfig()
     if not pip_on then return end
     local w0, h0 = get_pip_window_size()
-    local pixelformat0 = video_out_params and video_out_params['pixelformat'] or ''
-    video_out_params = val
+    video_out_params = mp.get_property_native('video-out-params')
     local w1, h1 = get_pip_window_size()
-    local pixelformat1 = video_out_params and video_out_params['pixelformat'] or ''
     local resized = false
-    if not (w0 == w1 and h0 == h1) then
-        resized = resize_pip_window(w1, h1)
-    end
-    if not resized and not (pixelformat0 == pixelformat1) then
-        mp.add_timeout(0.1, function() show_in_taskbar(false) end)
-    end
+    if not (w0 == w1 and h0 == h1) then resized = resize_pip_window(w1, h1) end
+    if not resized then show_in_taskbar(false) end
 end
 
 function on_pip_prop_change(name, val)
     if not pip_on then return end
     if val == pip_props[name] then return end
     mp.set_property_native(name, pip_props[name])
-    if name == 'fullscreen' or name == 'window-minimized' or name == 'window-maximized' then
+    if name == 'fullscreen' or name == 'window-maximized' or
+       name == 'border' or name == 'title-bar' then
         mp.add_timeout(0.1, function() show_in_taskbar(false) end)
     end
 end
@@ -384,12 +407,11 @@ function resize_pip_window(w, h)
     return resized
 end
 
+-- IMPORTANT: reset mpv_hwnd on VO change
+mp.observe_property('current-vo', 'string', function(_, val) if val then mpv_hwnd = nil end end)
+
 validate_user_opts()
 
--- keybinding
 mp.add_key_binding(user_opts.key, 'toggle', toggle)
-
--- script message
-mp.register_script_message('toggle', toggle)
 mp.register_script_message('on', on)
 mp.register_script_message('off', off)
