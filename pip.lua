@@ -267,15 +267,16 @@ function get_pip_window_size()
 end
 
 function get_normal_window_size()
-    local w_min, h_min= 0, 0
-    local atf_smaller = mp.get_property('autofit-smaller')
-    if not is_empty(atf_smaller) then
-        w_min, h_min = parse_autofit(atf_smaller, false)
-    end
     local w_max, h_max = 100000000, 100000000
     local atf_larger = mp.get_property('autofit-larger')
     if not is_empty(atf_larger) then
         w_max, h_max = parse_autofit(atf_larger, true)
+    end
+    local w_min, h_min= 0, 0
+    local atf_smaller = mp.get_property('autofit-smaller')
+    if not is_empty(atf_smaller) then
+        w_min, h_min = parse_autofit(atf_smaller, false)
+        if w_min > w_max then w_min, h_min = w_max, h_max end
     end
     local w, h = get_video_out_size()
     local atf = mp.get_property('autofit')
