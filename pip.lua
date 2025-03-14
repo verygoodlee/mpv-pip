@@ -41,7 +41,7 @@ function validate_user_opts()
     user_opts.thin_border = user_opts.thin_border and mp.get_property_native('title-bar') ~= nil
     resize_pip_window()
 end
-options.read_options(user_opts, _, validate_user_opts)
+options.read_options(user_opts, "pip", validate_user_opts)
 
 ---------- win32api start ----------
 ffi.cdef[[
