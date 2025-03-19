@@ -24,7 +24,7 @@ mpv lua script implements Picture-in-Picture, only for Windows System，it is im
     ```
 ## Use
 You can customize the keybinding, window size and window alignment in `pip.conf`.\
-If you use the [--no-input-default-bindings](https://mpv.io/manual/stable/#options-no-input-default-bindings) option, you need to customize your keybinding in `input.conf`: 
+If you use the [--input-default-bindings=no](https://mpv.io/manual/stable/#options-input-default-bindings) option, you need to customize your keybinding in `input.conf`: 
 ```
 KEY script-binding pip/toggle
 ```
@@ -36,6 +36,6 @@ local pip_is_on = mp.get_property_bool('user-data/pip/on', false)
 -- turn on, turn off and toggle opertions
 mp.commandv('script-message-to', 'pip', 'on')
 mp.commandv('script-message-to', 'pip', 'off')
-mp.commandv('script-message-to', 'pip', 'toggle')
+mp.commandv('script-binding', 'pip/toggle')
 ```
 

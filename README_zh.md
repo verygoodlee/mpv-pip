@@ -24,7 +24,7 @@
     ```
 ## 使用
 可在`pip.conf`中自定义 快捷键、窗口大小、窗口对齐方式。\
-如果你使用了 [--no-input-default-bindings](https://mpv.io/manual/stable/#options-no-input-default-bindings) 选项，则需要自己在`input.conf`中自定义快捷键：
+如果你使用了 [--input-default-bindings=no](https://mpv.io/manual/stable/#options-input-default-bindings) 选项，则需要自己在`input.conf`中自定义快捷键：
 ```
 KEY script-binding pip/toggle
 ```
@@ -36,6 +36,6 @@ local pip_is_on = mp.get_property_bool('user-data/pip/on', false)
 -- 开启、关闭、切换 操作
 mp.commandv('script-message-to', 'pip', 'on')
 mp.commandv('script-message-to', 'pip', 'off')
-mp.commandv('script-message-to', 'pip', 'toggle')
+mp.commandv('script-binding', 'pip/toggle')
 ```
 

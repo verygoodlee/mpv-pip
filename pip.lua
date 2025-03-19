@@ -25,6 +25,7 @@ local user_opts = {
     -- add thin-line border to PiP window, works only on Windows11
     thin_border = false,
 }
+
 function validate_user_opts()
     if not (user_opts.autofit:match('^%d+%%?x%d+%%?$') or user_opts.autofit:match('^%d+%%?$')) then
         msg.warn('autofit option is invalid')
@@ -39,9 +40,10 @@ function validate_user_opts()
         user_opts.align_y = 'bottom'
     end
     user_opts.thin_border = user_opts.thin_border and mp.get_property_native('title-bar') ~= nil
-    resize_pip_window()
 end
-options.read_options(user_opts, _, validate_user_opts)
+
+options.read_options(user_opts)
+validate_user_opts()
 
 ---------- win32api start ----------
 ffi.cdef[[
@@ -194,6 +196,10 @@ end
 
 function show_in_taskbar(show)
     if not init() then return end
+    if mp.get_property_bool('show-in-taskbar') ~= nil then
+        mp.set_property_bool('show-in-taskbar', show)
+        return
+    end
     local GWL_EXSTYLE, WS_EX_TOOLWINDOW = -20, 0x00000080
     local exstyle = user32.GetWindowLongPtrW(mpv_hwnd, GWL_EXSTYLE)
     exstyle = bit.band(exstyle, bit.bnot(WS_EX_TOOLWINDOW))
@@ -385,19 +391,13 @@ function on_video_reconfig()
     local w0, h0 = get_pip_window_size()
     video_out_params = mp.get_property_native('video-out-params')
     local w1, h1 = get_pip_window_size()
-    local resized = false
-    if not (w0 == w1 and h0 == h1) then resized = resize_pip_window(w1, h1) end
-    if not resized then show_in_taskbar(false) end
+    if not (w0 == w1 and h0 == h1) then resize_pip_window(w1, h1) end
 end
 
 function on_pip_prop_change(name, val)
     if not pip_on then return end
     if val == pip_props[name] then return end
     mp.set_property_native(name, pip_props[name])
-    if name == 'fullscreen' or name == 'window-maximized' or
-       name == 'border' or name == 'title-bar' then
-        mp.add_timeout(0.1, function() show_in_taskbar(false) end)
-    end
 end
 
 function resize_pip_window(w, h)
@@ -410,8 +410,6 @@ end
 
 -- IMPORTANT: reset mpv_hwnd on VO change
 mp.observe_property('current-vo', 'string', function(_, val) if val then mpv_hwnd = nil end end)
-
-validate_user_opts()
 
 mp.add_key_binding(user_opts.key, 'toggle', toggle)
 mp.register_script_message('on', on)
