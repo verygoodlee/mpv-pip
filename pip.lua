@@ -153,7 +153,7 @@ function move_window(w, h, align_x, align_y, taskbar)
     end
     local invisible_borders_size = {left = 0, right = 0, top = 0, bottom = 0}
     if user_opts.thin_border then
-        local thin_border_size = 1
+        local thin_border_size = get_border_size()
         local rect = ffi.new('RECT')
         rect.left, rect.top, rect.right, rect.bottom = 0, 0, w, h
         local GWL_STYLE = -16
@@ -220,6 +220,10 @@ function is_empty(o)
     return false
 end
 
+function get_border_size()
+    return user_opts.thin_border and round(mp.get_property_number('display-hidpi-scale', 1)) or 0
+end
+
 local video_out_params = nil
 function get_video_out_size()
     local w = video_out_params and video_out_params['dw'] or 960
@@ -251,9 +255,16 @@ function parse_autofit(atf, larger)
     else
         msg.warn('autofit value is invalid: ' .. atf)
     end
-    if w > 0 then
+    if w > 0 and h == 0 then
+        h = larger and (work_area.bottom - work_area.top) or 1
+    elseif w == 0 and h > 0 then
+        w = larger and (work_area.right - work_area.left) or 1
+    end
+    local border_size = get_border_size()
+    w = math.max(math.min(w, work_area.right - work_area.left - 2 * border_size), 0)
+    h = math.max(math.min(h, work_area.bottom - work_area.top - 2 * border_size), 0)
+    if w > 0 and h > 0 then
         -- fit to the video aspect ratio
-        if h <= 0 then h = larger and 100000000 or 1 end
         local _, _, aspect = get_video_out_size()
         if aspect > w / h then
             if larger then h = round(w / aspect)
@@ -273,20 +284,24 @@ function get_pip_window_size()
 end
 
 function get_normal_window_size()
-    local w_max, h_max = 100000000, 100000000
     local atf_larger = mp.get_property('autofit-larger')
-    if not is_empty(atf_larger) then
-        w_max, h_max = parse_autofit(atf_larger, true)
-    end
-    local w_min, h_min= 0, 0
+    if is_empty(atf_larger) then atf_larger = '100%x100%' end
+    local w_max, h_max = parse_autofit(atf_larger, true)
+    local w_min, h_min = 0, 0
     local atf_smaller = mp.get_property('autofit-smaller')
     if not is_empty(atf_smaller) then
         w_min, h_min = parse_autofit(atf_smaller, false)
         if w_min > w_max then w_min, h_min = w_max, h_max end
     end
-    local w, h = get_video_out_size()
+    local w, h = 0, 0
     local atf = mp.get_property('autofit')
-    if not is_empty(atf) then
+    if is_empty(atf) then
+        w, h = get_video_out_size()
+        if mp.get_property_bool('hidpi-window-scale', false) then
+            local hidpi_scale = mp.get_property_number('display-hidpi-scale', 1)
+            w, h = round(w * hidpi_scale), round(h * hidpi_scale)
+        end
+    else
         w, h = parse_autofit(atf, true)
     end
     if w >= w_max then return w_max, h_max
