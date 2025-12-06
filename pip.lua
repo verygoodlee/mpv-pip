@@ -51,7 +51,6 @@ ffi.cdef[[
     typedef void*           HMONITOR;
     typedef int             BOOL;
     typedef unsigned int    DWORD;
-    typedef unsigned int    LPDWORD[1];
     typedef int             LPARAM;
     typedef long            LONG;
     typedef long            LONG_PTR;
@@ -73,7 +72,6 @@ ffi.cdef[[
 
     HWND    GetForegroundWindow();
     BOOL    EnumWindows(WNDENUMPROC lpEnumFunc, LPARAM lParam);
-    DWORD   GetWindowThreadProcessId(HWND hwnd, LPDWORD lpdwProcessId);
     HMONITOR MonitorFromWindow(HWND hwnd, DWORD dwFlags);
     BOOL    GetMonitorInfoA(HMONITOR hMonitor, LPMONITORINFO lpmi);
     BOOL    SystemParametersInfoA(UINT uiAction, UINT uiParam, PVOID pvParam, UINT fWinIni);
@@ -86,11 +84,22 @@ ffi.cdef[[
 
 local user32 = ffi.load('user32')
 
+local window_id = nil
 local mpv_hwnd = nil
+
+-- IMPORTANT: switching VO will change the window-id
+mp.observe_property('window-id', 'number', function(_, val)
+    window_id = val
+    mpv_hwnd = nil
+end)
 
 function init()
     if mpv_hwnd then return true end
-    -- find mpv window
+    if not window_id then
+        msg.warn('mpv window not being opened yet')
+        return false
+    end
+    -- find mpv window by window-id
     local foreground_hwnd = user32.GetForegroundWindow()
     if is_mpv_window(foreground_hwnd) then
         mpv_hwnd = foreground_hwnd
@@ -103,15 +112,16 @@ function init()
             return true
         end, 0)
     end
-    if not mpv_hwnd then msg.warn('mpv window not found') end
-    return mpv_hwnd ~= nil
+    if not mpv_hwnd then
+        msg.warn('mpv window not found')
+        return false
+    end
+    return true
 end
 
 function is_mpv_window(hwnd)
     if not hwnd then return false end
-    local lpdwProcessId = ffi.new('LPDWORD')
-    user32.GetWindowThreadProcessId(hwnd, lpdwProcessId)
-    return lpdwProcessId[0] == utils.getpid()
+    return tonumber(ffi.cast('uintptr_t', hwnd)) == window_id
 end
 
 -- get work area of display monitor, is the portion not obscured by the system taskbar
@@ -422,9 +432,6 @@ function resize_pip_window(w, h)
     if resized then msg.info(string.format('Resize: %dx%d', w, h)) end
     return resized
 end
-
--- IMPORTANT: reset mpv_hwnd on VO change
-mp.observe_property('current-vo', 'string', function(_, val) if val then mpv_hwnd = nil end end)
 
 mp.add_key_binding(user_opts.key, 'toggle', toggle)
 mp.register_script_message('on', on)
